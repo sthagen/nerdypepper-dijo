@@ -14,3 +14,6 @@
 # ignore session
 
 *.vim
+.envrc
+.direnv
+result

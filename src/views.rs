@@ -1,13 +1,15 @@
 use cursive::direction::Direction;
 use cursive::event::{Event, EventResult, Key};
-use cursive::theme::{Effect, Style};
+use cursive::theme::{ColorStyle, Effect, Style};
 use cursive::view::View;
 use cursive::{Printer, Vec2};
 
 use chrono::prelude::*;
-use chrono::{Duration, Local, NaiveDate};
+use chrono::{Local, NaiveDate};
 
 use crate::habit::{Bit, Count, Habit, TrackEvent, ViewMode};
+use crate::theme::cursor_bg;
+use crate::utils::VIEW_WIDTH;
 
 use crate::CONFIGURATION;
 
@@ -26,24 +28,24 @@ where
     T::HabitType: std::fmt::Display,
 {
     fn draw(&self, printer: &Printer) {
-        let now = if self.view_month_offset() == 0 {
-            Local::today()
-        } else {
-            Local::today()
-                .checked_sub_signed(Duration::weeks(4 * self.view_month_offset() as i64))
-                .unwrap()
-        };
+        // let now = if self.view_month_offset() == 0 {
+        //     Local::today()
+        // } else {
+        //     Local::today()
+        //         .checked_sub_signed(Duration::weeks(4 * self.view_month_offset() as i64))
+        //         .unwrap()
+        // };
+        let now = self.inner_data_ref().cursor().0;
+        let is_today = now == Local::now().naive_local().date();
         let year = now.year();
         let month = now.month();
 
-        let goal_reached_style = Style::from(CONFIGURATION.reached_color);
-        let todo_style = Style::from(CONFIGURATION.todo_color);
-        let future_style = Style::from(CONFIGURATION.future_color);
+        let goal_reached_style = Style::from(CONFIGURATION.reached_color());
+        let future_style = Style::from(CONFIGURATION.inactive_color());
 
         let strikethrough = Style::from(Effect::Strikethrough);
 
-        let goal_status =
-            self.view_month_offset() == 0 && self.reached_goal(Local::now().naive_local().date());
+        let goal_status = is_today && self.reached_goal(Local::now().naive_local().date());
 
         printer.with_style(
             Style::merge(&[
@@ -61,11 +63,7 @@ where
             |p| {
                 p.print(
                     (0, 0),
-                    &format!(
-                        " {:.width$} ",
-                        self.name(),
-                        width = CONFIGURATION.view_width - 6
-                    ),
+                    &format!(" {:.width$} ", self.name(), width = VIEW_WIDTH - 6),
                 );
             },
         );
@@ -80,7 +78,7 @@ where
                 let is_this_week = week.contains(&Local::now().naive_local().date());
                 let remaining = week.iter().map(|&i| self.remaining(i)).sum::<u32>();
                 let completions = weekly_goal - remaining;
-                let full = CONFIGURATION.view_width - 8;
+                let full = VIEW_WIDTH - 8;
                 let bars_to_fill = if weekly_goal > 0 {
                     (completions * full as u32) / weekly_goal
                 } else {
@@ -113,11 +111,20 @@ where
         let draw_day = |printer: &Printer| {
             let mut i = 0;
             while let Some(d) = NaiveDate::from_ymd_opt(year, month, i + 1) {
-                let day_style;
+                let mut day_style = Style::none();
+                let mut fs = future_style;
+                let grs = ColorStyle::front(CONFIGURATION.reached_color());
+                let ts = ColorStyle::front(CONFIGURATION.todo_color());
+                let cs = ColorStyle::back(cursor_bg());
+
                 if self.reached_goal(d) {
-                    day_style = goal_reached_style;
+                    day_style = day_style.combine(Style::from(grs));
                 } else {
-                    day_style = todo_style;
+                    day_style = day_style.combine(Style::from(ts));
+                }
+                if d == now && printer.focused {
+                    day_style = day_style.combine(cs);
+                    fs = fs.combine(cs);
                 }
                 let coords: Vec2 = ((i % 7) * 3, i / 7 + 2).into();
                 if let Some(c) = self.get_by_date(d) {
@@ -125,15 +132,15 @@ where
                         p.print(coords, &format!("{:^3}", c));
                     });
                 } else {
-                    printer.with_style(future_style, |p| {
-                        p.print(coords, &format!("{:^3}", CONFIGURATION.future_chr));
+                    printer.with_style(fs, |p| {
+                        p.print(coords, &format!("{:^3}", CONFIGURATION.look.future_chr));
                     });
                 }
                 i += 1;
             }
         };
 
-        match self.view_mode() {
+        match self.inner_data_ref().view_mode() {
             ViewMode::Day => draw_day(printer),
             ViewMode::Week => draw_week(printer),
             _ => draw_day(printer),
@@ -149,7 +156,7 @@ where
     }
 
     fn on_event(&mut self, e: Event) -> EventResult {
-        let now = Local::now().naive_local().date();
+        let now = self.inner_data_mut_ref().cursor().0;
         if self.is_auto() {
             return EventResult::Ignored;
         }

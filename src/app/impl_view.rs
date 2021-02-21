@@ -12,21 +12,17 @@ use notify::DebouncedEvent;
 
 use crate::app::{App, MessageKind};
 use crate::habit::{HabitWrapper, ViewMode};
-use crate::utils;
-use crate::CONFIGURATION;
+use crate::utils::{self, GRID_WIDTH, VIEW_HEIGHT, VIEW_WIDTH};
 
 impl View for App {
     fn draw(&self, printer: &Printer) {
-        let grid_width = CONFIGURATION.grid_width;
-        let view_width = CONFIGURATION.view_width;
-        let view_height = CONFIGURATION.view_height;
         let mut offset = Vec2::zero();
         for (idx, habit) in self.habits.iter().enumerate() {
-            if idx >= grid_width && idx % grid_width == 0 {
-                offset = offset.map_y(|y| y + view_height).map_x(|_| 0);
+            if idx >= GRID_WIDTH && idx % GRID_WIDTH == 0 {
+                offset = offset.map_y(|y| y + VIEW_HEIGHT).map_x(|_| 0);
             }
             habit.draw(&printer.offset(offset).focused(self.focus == idx));
-            offset = offset.map_x(|x| x + view_width + 2);
+            offset = offset.map_x(|x| x + VIEW_WIDTH + 2);
         }
 
         offset = offset.map_x(|_| 0).map_y(|_| self.max_size().y - 2);
@@ -45,13 +41,10 @@ impl View for App {
     }
 
     fn required_size(&mut self, _: Vec2) -> Vec2 {
-        let grid_width = CONFIGURATION.grid_width;
-        let view_width = CONFIGURATION.view_width;
-        let view_height = CONFIGURATION.view_height;
-        let width = grid_width * (view_width + 2);
+        let width = GRID_WIDTH * (VIEW_WIDTH + 2);
         let height = {
             if self.habits.len() > 0 {
-                (view_height as f64 * (self.habits.len() as f64 / grid_width as f64).ceil())
+                (VIEW_HEIGHT as f64 * (self.habits.len() as f64 / GRID_WIDTH as f64).ceil())
                     as usize
             } else {
                 0
@@ -102,11 +95,29 @@ impl View for App {
                 self.set_focus(Absolute::Down);
                 return EventResult::Consumed(None);
             }
+
+            Event::Char('K') => {
+                self.move_cursor(Absolute::Up);
+                return EventResult::Consumed(None);
+            }
+            Event::Char('H') => {
+                self.move_cursor(Absolute::Left);
+                return EventResult::Consumed(None);
+            }
+            Event::Char('J') => {
+                self.move_cursor(Absolute::Down);
+                return EventResult::Consumed(None);
+            }
+            Event::Char('L') => {
+                self.move_cursor(Absolute::Right);
+                return EventResult::Consumed(None);
+            }
+
             Event::Char('v') => {
                 if self.habits.is_empty() {
                     return EventResult::Consumed(None);
                 }
-                if self.habits[self.focus].view_mode() == ViewMode::Week {
+                if self.habits[self.focus].inner_data_ref().view_mode() == ViewMode::Week {
                     self.set_mode(ViewMode::Day)
                 } else {
                     self.set_mode(ViewMode::Week)
@@ -115,14 +126,15 @@ impl View for App {
             }
             Event::Char('V') => {
                 for habit in self.habits.iter_mut() {
-                    habit.set_view_mode(ViewMode::Week);
+                    habit.inner_data_mut_ref().set_view_mode(ViewMode::Week);
                 }
                 return EventResult::Consumed(None);
             }
             Event::Key(Key::Esc) => {
                 for habit in self.habits.iter_mut() {
-                    habit.set_view_mode(ViewMode::Day);
+                    habit.inner_data_mut_ref().set_view_mode(ViewMode::Day);
                 }
+                self.reset_cursor();
                 return EventResult::Consumed(None);
             }
 
@@ -138,7 +150,7 @@ impl View for App {
                 return EventResult::Consumed(None);
             }
             Event::Char('}') => {
-                self.set_view_month_offset(0);
+                self.reset_cursor();
                 return EventResult::Consumed(None);
             }
             Event::CtrlChar('l') => {
@@ -148,14 +160,12 @@ impl View for App {
             }
 
             /* Every keybind that is not caught by App trickles
-             * down to the focused habit. We sift back to today
-             * before performing any action, "refocusing" the cursor
+             * down to the focused habit.
              * */
             _ => {
                 if self.habits.is_empty() {
                     return EventResult::Ignored;
                 }
-                self.set_view_month_offset(0);
                 self.habits[self.focus].on_event(e)
             }
         }

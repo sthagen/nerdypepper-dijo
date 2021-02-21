@@ -6,7 +6,8 @@ use cursive::view::Resizable;
 use cursive::views::{EditView, LinearLayout, OnEventView, TextView};
 use cursive::Cursive;
 
-use crate::{app::App, CONFIGURATION};
+use crate::app::App;
+use crate::utils::{GRID_WIDTH, VIEW_WIDTH};
 
 static COMMANDS: &'static [&'static str] = &[
     "add",
@@ -19,6 +20,7 @@ static COMMANDS: &'static [&'static str] = &[
     "quit",
     "write",
     "help",
+    "writeandquit",
 ];
 
 fn get_command_completion(prefix: &str) -> Option<String> {
@@ -28,7 +30,6 @@ fn get_command_completion(prefix: &str) -> Option<String> {
 
 fn get_habit_completion(prefix: &str, habit_names: &[String]) -> Option<String> {
     let first_match = habit_names.iter().filter(|&x| x.starts_with(prefix)).next();
-    eprintln!("{:?}| {:?}", prefix, first_match);
     return first_match.map(|x| x.into());
 }
 
@@ -59,7 +60,6 @@ pub fn open_command_window(s: &mut Cursive) {
             } else {
                 let word = contents.split(' ').last().unwrap();
                 let completion = get_habit_completion(word, &habit_list);
-                eprintln!("{:?} | {:?}", completion, contents);
                 if let Some(c) = completion {
                     let cb = view.set_content(format!("{}", contents) + &c[word.len()..]);
                     return Some(EventResult::Consumed(Some(cb)));
@@ -68,7 +68,7 @@ pub fn open_command_window(s: &mut Cursive) {
             }
         },
     )
-    .fixed_width(CONFIGURATION.view_width * CONFIGURATION.grid_width);
+    .fixed_width(VIEW_WIDTH * GRID_WIDTH);
     s.call_on_name("Frame", |view: &mut LinearLayout| {
         let mut commandline = LinearLayout::horizontal()
             .child(TextView::new(":"))
@@ -99,8 +99,9 @@ fn call_on_app(s: &mut Cursive, input: &str) {
     // our main cursive object, has to be parsed again
     // here
     // TODO: fix this somehow
-    if let Ok(Command::Quit) = Command::from_string(input) {
-        s.quit();
+    match Command::from_string(input) {
+        Ok(Command::Quit) | Ok(Command::WriteAndQuit) => s.quit(),
+        _ => {}
     }
 }
 
@@ -116,6 +117,7 @@ pub enum Command {
     Write,
     Quit,
     Blank,
+    WriteAndQuit,
 }
 
 #[derive(Debug)]
@@ -197,6 +199,7 @@ impl Command {
             }
             "mprev" | "month-prev" => return Ok(Command::MonthPrev),
             "mnext" | "month-next" => return Ok(Command::MonthNext),
+            "wq" | "writeandquit" => return Ok(Command::WriteAndQuit),
             "q" | "quit" => return Ok(Command::Quit),
             "w" | "write" => return Ok(Command::Write),
             "" => return Ok(Command::Blank),
